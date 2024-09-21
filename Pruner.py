@@ -70,46 +70,68 @@ class Pruner:
 
     def GenerateImportanceScores(self):
         self.importance_scores = {}
-        num_layers = len(self.model.features)
+        # num_layers = len(self.model.features)
         criterion = torch.nn.CrossEntropyLoss()
 
         for inputs, labels in self.train_loader:
             inputs, labels = inputs.to(self.device), labels.to(self.device)
-            outputs = inputs
-            for i in range(num_layers):
-                if isinstance(self.model.features[i], torch.nn.Conv2d):
-                    outputs = self.model.features[i](outputs)
-                    outputs = outputs * self.scaling_factors[i].cuda()
-                else:
-                    outputs = self.model.features[i](outputs)
+            loss = self._forward_scaling_factors(inputs, labels, criterion)
 
-            outputs = torch.flatten(outputs, 1)
-            classification_output = self.model.classifier(outputs)
-            loss = criterion(classification_output, labels)
+            for i, scaling_factor in self.scaling_factors.items():
+                grad = torch.autograd.grad(loss, scaling_factor, retain_graph=True)[0]
+                self.importance_scores[i] = (grad * scaling_factor).detach()
+    
+    def _forward_scaling_factors(self, inputs, labels, criterion): 
+        outputs = inputs
+        for i, layer in enumerate(self.model.features):
+            if isinstance(layer, torch.nn.Conv2d):
+                outputs = layer(outputs)
+                outputs = outputs * self.scaling_factors[i].to(self.device)
+            else:
+                outputs = layer(outputs)
+        outputs = self.model.classifier(torch.flatten(outputs, 1))
+        return criterion(outputs, labels)
+                    
+                    
+        #     for i in range(num_layers):
+        #         if isinstance(self.model.features[i], torch.nn.Conv2d):
+        #             outputs = self.model.features[i](outputs)
+        #             outputs = outputs * self.scaling_factors[i].cuda()
+        #         else:
+        #             outputs = self.model.features[i](outputs)
 
-        for i, scaling_factor in self.scaling_factors.items():
-            first_order_derivative = torch.autograd.grad(loss, scaling_factor, retain_graph=True)[0]
-            self.importance_scores[i] = torch.abs(first_order_derivative * scaling_factor).detach()
+        #     outputs = torch.flatten(outputs, 1)
+        #     classification_output = self.model.classifier(outputs)
+        #     loss = criterion(classification_output, labels)
 
-    def FindFilterToPrune(self):
-        min_value = float('inf')
-        min_filter = None
-        min_layer = None
+        # for i, scaling_factor in self.scaling_factors.items():
+        #     first_order_derivative = torch.autograd.grad(loss, scaling_factor, retain_graph=True)[0]
+        #     self.importance_scores[i] = torch.abs(first_order_derivative * scaling_factor).detach()
 
+    def FindFilterToPrune(self, threshold):
         for layer_index, scores_tensor in self.importance_scores.items():
             for filter_index, score in enumerate(scores_tensor[0]):
-                # Check if the filter has already been pruned
-                if (layer_index, filter_index) in self.pruned_filters:
-                    continue
+                if (layer_index, filter_index) not in self.pruned_filters and score < threshold:
+                    return layer_index, filter_index
+        return None, None
+        # min_value = float('inf')
+        # min_filter = None
+        # min_layer = None
 
-                if score < min_value:
-                    min_value = score.item()
-                    min_filter = filter_index
-                    min_layer = layer_index
-                    if min_value == 0:
-                        break
+        # for layer_index, scores_tensor in self.importance_scores.items():
+        #     for filter_index, score in enumerate(scores_tensor[0]):
+        #         # Check if the filter has already been pruned
+        #         if (layer_index, filter_index) in self.pruned_filters:
+        #             continue
 
-        return min_layer, min_filter
+        #         if score < min_value:
+        #             min_value = score.item()
+        #             min_filter = filter_index
+        #             min_layer = layer_index
+        #             if min_value == 0:
+        #                 break
+
+        # return min_layer, min_filter
 
     def Prune(self, layer_to_prune, filter_to_prune):
         pruned_layer = self.model.features[layer_to_prune]
@@ -126,15 +148,16 @@ class Pruner:
         optimizer = torch.optim.SGD(self.model.parameters(), lr=learning_rate, momentum=momentum)
         criterion = torch.nn.CrossEntropyLoss()
 
-        epoch = checkpoint_epoch
+        # epoch = checkpoint_epoch
 
-        for epoch in range(epoch, num_epochs):
+        for epoch in range(num_epochs):
             logger.info("Epoch " + str(epoch + 1) + "/" + str(num_epochs))
             for inputs, labels in self.train_loader:
                 inputs, labels = inputs.to(self.device), labels.to(self.device)
                 optimizer.zero_grad()
-                outputs = self.model(inputs)
-                loss = criterion(outputs, labels)
+                loss = self._forward_scaling_factors(inputs, labels, criterion)
+                # outputs = self.model(inputs)
+                # loss = criterion(outputs, labels)
                 loss.backward()
                 optimizer.step()
 

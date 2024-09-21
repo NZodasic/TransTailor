@@ -102,7 +102,8 @@ if __name__ == "__main__":
     model = LoadModel(device)
 
     # INIT PRUNING SCHEME
-    pruner = Pruner(model, train_loader, device, amount=10)
+    pruner = Pruner(model, train_loader, device, amount=0.1)
+    
     if os.path.isfile(CHECKPOINT_PATH):
         logger.info("Load model and pruning info from checkpoint...")
         pruner.LoadState(CHECKPOINT_PATH)
@@ -119,25 +120,34 @@ if __name__ == "__main__":
     while True:
         pruner.TrainScalingFactors(ROOT_DIR, 1, IA_LR, IA_MOMENTUM)
         pruner.GenerateImportanceScores()
-        layer_to_prune, filter_to_prune = pruner.FindFilterToPrune()
+        layer_to_prune, filter_to_prune = pruner.FindFilterToPrune(threshold=0.01)
+        
+        if layer_to_prune is None:
+            print("No filter to prune!", flush=True)
+            break
+        
         pruner.Prune(layer_to_prune, filter_to_prune)
         print("===Prune ", filter_to_prune, "th filter in ", layer_to_prune, "th layer===", flush=True)
+        pruner.Finetune(TA_EPOCH, TA_LR, TA_MOMENTUM)
+               
 
         pruned_count = len(pruner.pruned_filters)
         if pruned_count % 10 == 0:
             pruner.SaveState(SAVED_PATH.format(pruned_count = pruned_count))
 
+
         for param in pruner.model.parameters():
             param.requires_grad = True
-        pruner.Finetune(TA_EPOCH, TA_LR, TA_MOMENTUM, 0)
+
 
         pruned_accuracy = CalculateAccuracy(pruner.model, test_loader)
         print("Accuracy of pruned model: ", pruned_accuracy, flush=True)
 
-        if abs(opt_accuracy - pruned_accuracy) > pruner.amount:
+        if (opt_accuracy - pruned_accuracy) > pruner.amount:
             print("Optimization done!", flush=True)
             torch.save(pruner.model.state_dict(), RESULT_PATH)
             break
         else:
-            print("Update optimal model", flush=True)
+            opt_accuracy = pruned_accuracy
+            # print("Update optimal model", flush=True)
 
