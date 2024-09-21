@@ -21,14 +21,12 @@ class Pruner:
 
     def InitScalingFactors(self):
         logger.info("Init alpha from scratch!")
-        num_layers = len(self.model.features)
         self.scaling_factors = {}
 
-        for i in range(num_layers):
-            layer = self.model.features[i]
+        for i, layer in enumerate(self.model.modules()):
             if isinstance(layer, torch.nn.Conv2d):
-                print(layer, layer.out_channels)
-                self.scaling_factors[i] = torch.rand((1, layer.out_channels, 1, 1), requires_grad=True)
+                print(f"Layer {i}: {layer}, out_channels: {layer.out_channels}")
+                self.scaling_factors[i] = torch.rand((1, layer.out_channels, 1, 1), requires_grad=True, device=self.device)
 
     def TrainScalingFactors(self, root, num_epochs, learning_rate, momentum):
         checkpoint_path = os.path.join(root, 'checkpoint/Importance_aware/ia_epoch_{epoch}.pt')
@@ -70,26 +68,30 @@ class Pruner:
 
     def GenerateImportanceScores(self):
         self.importance_scores = {}
-        # num_layers = len(self.model.features)
         criterion = torch.nn.CrossEntropyLoss()
-
+        
         for inputs, labels in self.train_loader:
             inputs, labels = inputs.to(self.device), labels.to(self.device)
-            loss = self._forward_scaling_factors(inputs, labels, criterion)
-
+            loss = self._forward_with_scaling_factors(inputs, labels, criterion)
+            
             for i, scaling_factor in self.scaling_factors.items():
                 grad = torch.autograd.grad(loss, scaling_factor, retain_graph=True)[0]
                 self.importance_scores[i] = (grad * scaling_factor).detach()
-    
-    def _forward_scaling_factors(self, inputs, labels, criterion): 
+
+    def _forward_with_scaling_factors(self, inputs, labels, criterion):
         outputs = inputs
         for i, layer in enumerate(self.model.features):
             if isinstance(layer, torch.nn.Conv2d):
                 outputs = layer(outputs)
-                outputs = outputs * self.scaling_factors[i].to(self.device)
+                if i in self.scaling_factors:
+                    outputs = outputs * self.scaling_factors[i]
             else:
                 outputs = layer(outputs)
-        outputs = self.model.classifier(torch.flatten(outputs, 1))
+        
+        # Flatten the output before passing to classifier
+        outputs = torch.flatten(outputs, 1)
+        outputs = self.model.classifier(outputs)
+        
         return criterion(outputs, labels)
                     
                     
@@ -148,16 +150,13 @@ class Pruner:
         optimizer = torch.optim.SGD(self.model.parameters(), lr=learning_rate, momentum=momentum)
         criterion = torch.nn.CrossEntropyLoss()
 
-        # epoch = checkpoint_epoch
-
         for epoch in range(num_epochs):
-            logger.info("Epoch " + str(epoch + 1) + "/" + str(num_epochs))
+            logger.info(f"Epoch {epoch + 1}/{num_epochs}")
+            self.model.train()
             for inputs, labels in self.train_loader:
                 inputs, labels = inputs.to(self.device), labels.to(self.device)
                 optimizer.zero_grad()
-                loss = self._forward_scaling_factors(inputs, labels, criterion)
-                # outputs = self.model(inputs)
-                # loss = criterion(outputs, labels)
+                loss = self._forward_with_scaling_factors(inputs, labels, criterion)
                 loss.backward()
                 optimizer.step()
 
