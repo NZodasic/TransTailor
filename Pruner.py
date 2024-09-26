@@ -111,11 +111,18 @@ class Pruner:
         #     self.importance_scores[i] = torch.abs(first_order_derivative * scaling_factor).detach()
 
     def FindFilterToPrune(self, threshold):
+        filters_to_prune = []
         for layer_index, scores_tensor in self.importance_scores.items():
             for filter_index, score in enumerate(scores_tensor[0]):
                 if (layer_index, filter_index) not in self.pruned_filters and score < threshold:
+                    filters_to_prune.append((layer_index, filter_index, score.item()))
                     return layer_index, filter_index
-        return None, None
+        
+        #Sort filters by importance score based ascending and select
+        #the top prune_batch_size
+        
+        filters_to_prune.sort(key=lambda x: x[2])
+        return filters_to_prune[:self.prune_bath_size]
         # min_value = float('inf')
         # min_filter = None
         # min_layer = None
@@ -134,6 +141,17 @@ class Pruner:
         #                 break
 
         # return min_layer, min_filter
+
+    def PruneFilters(self, filters_to_prune):
+        for layer_index, filter_index, _ in filters_to_prune:
+            pruned_layer = self.model.features[layer_index]
+            
+            with torch.no_grad():
+                pruned_layer.weight.data[filter_index] = 0
+                pruned_layer.bias.data[filter_index] = 0
+                
+            #Update the pruned_filters set
+            self.pruned_filters.add((layer_index, filter_index))
 
     def Prune(self, layer_to_prune, filter_to_prune):
         pruned_layer = self.model.features[layer_to_prune]

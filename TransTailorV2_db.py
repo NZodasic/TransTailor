@@ -101,7 +101,7 @@ if __name__ == "__main__":
     logger.info("LOAD PRETRAINED MODEL: VGG-16 (ImageNet)")
     model = LoadModel(device)
 
-    pruner = Pruner(model, train_loader, device, amount=0.1)
+    pruner = Pruner(model, train_loader, device, amount=0.1, prune_batch_size=10)
 
     # Load checkpoint if available
     if os.path.isfile(CHECKPOINT_PATH):
@@ -119,13 +119,13 @@ if __name__ == "__main__":
     while True:
         pruner.TrainScalingFactors(ROOT_DIR, 1, IA_LR, IA_MOMENTUM)
         pruner.GenerateImportanceScores()
-        layer_to_prune, filter_to_prune = pruner.FindFilterToPrune(threshold=0.01)
+        filters_to_prune = pruner.FindFilterToPrune(threshold=0.01)
 
-        if layer_to_prune is None:
+        if not filters_to_prune:
             break
 
-        pruner.Prune(layer_to_prune, filter_to_prune)
-        print("===Prune ", filter_to_prune, "th filter in ", layer_to_prune, "th layer===", flush=True)
+        pruner.PruneFilters(filters_to_prune)
+        print("===Prune {len(filters_to_prune)} th filter in ", flush=True)
 
         pruned_count = len(pruner.pruned_filters)
         if pruned_count % 10 == 0:
