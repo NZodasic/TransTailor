@@ -88,7 +88,6 @@ if __name__ == "__main__":
     logger.info("START MAIN PROGRAM!")
     ROOT_DIR, CHECKPOINT_PATH, NUM_WORKER, BATCH_SIZE = LoadArguments()
     
-    CHECKPOINT_PATH = os.path.join(ROOT_DIR, "checkpoint")
     RESULT_PATH = os.path.join(ROOT_DIR, "checkpoint/optimal_model.pt")
     SAVED_PATH = os.path.join(ROOT_DIR, "checkpoint/pruner/checkpoint_{pruned_count}.pkl")
 
@@ -110,7 +109,8 @@ if __name__ == "__main__":
     logger.info("LOAD PRETRAINED MODEL: VGG-16 (ImageNet)")
     model = LoadModel(device)
     
-    model, scaling_factors, importance_scores, pruned_filters = LoadState("/content/drive/MyDrive/BCU-documents/checkpoint_0.pkl")
+    pruner = Pruner(model, train_loader, device, amount=0.1, prune_batch_size=10)
+    model, scaling_factors, importance_scores, pruned_filters = pruner.LoadState("/content/drive/MyDrive/BCU-documents/checkpoint_0.pkl")
 
     initial_accuracy = CalculateAccuracy(model, test_loader, device)
     logger.info("Accuracy of finetuned model: ", initial_accuracy, flush=True)
