@@ -196,7 +196,7 @@ class Pruner:
 
     def LoadState(self, path):
         """
-        Load the pruner's state from a file.
+        Load the prsuner's state from a file.
 
         Args:
             path (str): The path to load the state from.
