@@ -21,16 +21,18 @@ class Pruner:
 
     def InitScalingFactors(self):
         logger.info("Init alpha from scratch!")
-        self.scaling_factors = {}
+        num_layers = len(self.model.features)
 
-        for i, layer in enumerate(self.model.modules()):
+        # self.scaling_factors = {}
+
+        for i in range(num_layers):
+            layer = self.model.features[i]
+            
             if isinstance(layer, torch.nn.Conv2d):
-                print(f"Layer {i}: {layer}, out_channels: {layer.out_channels}")
-                self.scaling_factors[i] = torch.rand((1, layer.out_channels, 1, 1), requires_grad=True, device=self.device)
+                logger.info(layer, layer.out_channels)
+                self.scaling_factors[i] = torch.rand((1, layer.out_channels, 1, 1), requires_grad=True)
 
     def TrainScalingFactors(self, root, num_epochs, learning_rate, momentum):
-        checkpoint_path = os.path.join(root, 'checkpoint/Importance_aware/ia_epoch_{epoch}.pt')
-
         for param in self.model.parameters():
             param.requires_grad = False
 
@@ -67,91 +69,66 @@ class Pruner:
                 optimizer_alpha.step()
 
     def GenerateImportanceScores(self):
+        print("===Generate importance score===")
         self.importance_scores = {}
+        num_layers = len(self.model.features)
         criterion = torch.nn.CrossEntropyLoss()
-        
+
         for inputs, labels in self.train_loader:
             inputs, labels = inputs.to(self.device), labels.to(self.device)
-            loss = self._forward_with_scaling_factors(inputs, labels, criterion)
-            
-            for i, scaling_factor in self.scaling_factors.items():
-                grad = torch.autograd.grad(loss, scaling_factor, retain_graph=True)[0]
-                self.importance_scores[i] = (grad * scaling_factor).detach()
+            outputs = inputs
+            for i in range(num_layers):
+                if isinstance(self.model.features[i], torch.nn.Conv2d):
+                    outputs = self.model.features[i](outputs)
+                    outputs = outputs * self.scaling_factors[i].cuda()
+                else:
+                    outputs = self.model.features[i](outputs)
 
-    def _forward_with_scaling_factors(self, inputs, labels, criterion):
-        outputs = inputs
-        for i, layer in enumerate(self.model.features):
-            if isinstance(layer, torch.nn.Conv2d):
-                outputs = layer(outputs)
-                if i in self.scaling_factors:
-                    outputs = outputs * self.scaling_factors[i]
-            else:
-                outputs = layer(outputs)
-        
-        # Flatten the output before passing to classifier
-        outputs = torch.flatten(outputs, 1)
-        outputs = self.model.classifier(outputs)
-        
-        return criterion(outputs, labels)
-                    
-                    
-        #     for i in range(num_layers):
-        #         if isinstance(self.model.features[i], torch.nn.Conv2d):
-        #             outputs = self.model.features[i](outputs)
-        #             outputs = outputs * self.scaling_factors[i].cuda()
-        #         else:
-        #             outputs = self.model.features[i](outputs)
+            outputs = torch.flatten(outputs, 1)
+            classification_output = self.model.classifier(outputs)
+            loss = criterion(classification_output, labels)
 
-        #     outputs = torch.flatten(outputs, 1)
-        #     classification_output = self.model.classifier(outputs)
-        #     loss = criterion(classification_output, labels)
+        for i, scaling_factor in self.scaling_factors.items():
+            first_order_derivative = torch.autograd.grad(loss, scaling_factor, retain_graph=True)[0]
+            self.importance_scores[i] = torch.abs(first_order_derivative * scaling_factor).detach()
 
-        # for i, scaling_factor in self.scaling_factors.items():
-        #     first_order_derivative = torch.autograd.grad(loss, scaling_factor, retain_graph=True)[0]
-        #     self.importance_scores[i] = torch.abs(first_order_derivative * scaling_factor).detach()
+    # def FindFilterToPrune(self):
+    #     min_value = float('inf')
+    #     min_filter = None
+    #     min_layer = None
 
-    def FindFilterToPrune(self, threshold):
-        filters_to_prune = []
+    #     for layer_index, scores_tensor in self.importance_scores.items():
+    #         for filter_index, score in enumerate(scores_tensor[0]):
+    #             # Check if the filter has already been pruned
+    #             if (layer_index, filter_index) in self.pruned_filters:
+    #                 continue
+
+    #             if score < min_value:
+    #                 min_value = score.item()
+    #                 min_filter = filter_index
+    #                 min_layer = layer_index
+    #                 if min_value == 0:
+    #                     break
+
+    #     return min_layer, min_filter
+
+    def FindFiltersToPrune(self):
+        """
+        Identify all filters with the minimum importance score (β) to prune them at once.
+        """
+        min_value = float('inf')
+        filters_to_prune = {}  # List to store filters to prune
+
         for layer_index, scores_tensor in self.importance_scores.items():
+            filters_to_prune[layer_index] = []
             for filter_index, score in enumerate(scores_tensor[0]):
-                if (layer_index, filter_index) not in self.pruned_filters and score < threshold:
-                    filters_to_prune.append((layer_index, filter_index, score.item()))
-                    return layer_index, filter_index
-        
-        #Sort filters by importance score based ascending and select
-        #the top prune_batch_size
-        
-        filters_to_prune.sort(key=lambda x: x[2])
-        return filters_to_prune[:self.prune_bath_size]
-        # min_value = float('inf')
-        # min_filter = None
-        # min_layer = None
+                if score < min_value:
+                    min_value = score.item()  # Update the minimum value
+                    filters_to_prune[layer_index] = [filter_index]  # Reset the list
+                elif score == min_value:
+                    filters_to_prune[layer_index].append(filter_index)  # Add to the list if it matches min value
 
-        # for layer_index, scores_tensor in self.importance_scores.items():
-        #     for filter_index, score in enumerate(scores_tensor[0]):
-        #         # Check if the filter has already been pruned
-        #         if (layer_index, filter_index) in self.pruned_filters:
-        #             continue
-
-        #         if score < min_value:
-        #             min_value = score.item()
-        #             min_filter = filter_index
-        #             min_layer = layer_index
-        #             if min_value == 0:
-        #                 break
-
-        # return min_layer, min_filter
-
-    def PruneFilters(self, filters_to_prune):
-        for layer_index, filter_index, _ in filters_to_prune:
-            pruned_layer = self.model.features[layer_index]
-            
-            with torch.no_grad():
-                pruned_layer.weight.data[filter_index] = 0
-                pruned_layer.bias.data[filter_index] = 0
-                
-            #Update the pruned_filters set
-            self.pruned_filters.add((layer_index, filter_index))
+        return filters_to_prune  # Return the list of all filters to prune
 
     def Prune(self, layer_to_prune, filter_to_prune):
         pruned_layer = self.model.features[layer_to_prune]
@@ -163,18 +140,122 @@ class Pruner:
         # After pruning, you can update the pruned_filters set
         self.pruned_filters.add((layer_to_prune, filter_to_prune))
 
+    def PruneSingleFilter(self, layer_index, filter_index):
+        conv_layer = self.model.features[layer_index]
+        new_conv = torch.nn.Conv2d(in_channels=conv_layer.in_channels,
+                                    out_channels=conv_layer.out_channels - 1,
+                                    kernel_size=conv_layer.kernel_size,
+                                    stride=conv_layer.stride,
+                                    padding=conv_layer.padding,
+                                    dilation=conv_layer.dilation,
+                                    groups=conv_layer.groups,
+                                    bias=conv_layer.bias is not None)
+        new_filters = torch.cat((conv_layer.weight.data[:filter_index], conv_layer.weight.data[filter_index + 1:]))
+        new_conv.weight.data = new_filters
+
+        if conv_layer.bias is not None:
+                new_biases = torch.cat((conv_layer.bias.data[:filter_index], conv_layer.bias.data[filter_index + 1:]))
+                new_conv.bias.data = new_biases
+
+        return new_conv
+
+    def RestructureNextLayer(self, layer_index, filter_index):
+        next_conv_layer = None
+        for layer in self.model.features[layer_index + 1:]:
+            if isinstance(layer, torch.nn.Conv2d):
+                next_conv_layer = layer
+                break
+
+        next_new_conv = torch.nn.Conv2d(in_channels=next_conv_layer.in_channels - 1,
+                                            out_channels=next_conv_layer.out_channels,
+                                            kernel_size=next_conv_layer.kernel_size,
+                                            stride=next_conv_layer.stride,
+                                            padding=next_conv_layer.padding,
+                                            dilation=next_conv_layer.dilation,
+                                            groups=next_conv_layer.groups,
+                                            bias=next_conv_layer.bias is not None)
+
+        next_new_conv.weight.data = next_conv_layer.weight.data[:, :filter_index, :, :].clone()
+        next_new_conv.weight.data = torch.cat([next_new_conv.weight.data, next_conv_layer.weight.data[:, filter_index + 1:, :, :]], dim=1)
+
+        if next_conv_layer.bias is not None:
+                next_new_conv.bias.data = next_conv_layer.bias.data.clone()
+
+        return next_new_conv
+
+    def PruneAndRestructure(self, filters_to_prune):
+        print("===Prune and Restructre===\n")
+        for layer_to_prune in filters_to_prune:
+            next_layer_index = layer_to_prune + 1
+            for i, layer in enumerate(self.model.features[layer_to_prune + 1:]):
+                if isinstance(layer, torch.nn.Conv2d):
+                    next_layer_index = layer_to_prune + i + 1
+                    break
+            for filter_to_prune in filters_to_prune[layer_to_prune][::-1]:
+                if isinstance(self.model.features[layer_to_prune], torch.nn.Conv2d):
+                    self.model.features[layer_to_prune] = self.PruneSingleFilter(layer_to_prune, filter_to_prune)
+                if isinstance(self.model.features[next_layer_index], torch.nn.Conv2d):
+                    self.model.features[next_layer_index] = self.RestructureNextLayer(layer_to_prune, filter_to_prune)
+
+    def ModifyClassifier(self):
+        print("===Modify classifier===\n")
+        for inputs, labels in self.train_loader:
+            inputs, labels = inputs.to(self.device), labels.to(self.device)
+            outputs = self.model.features(inputs)
+            print(outputs.shape)
+            break
+
+        # Update the first linear layer in the classifier
+        old_fc_layer = self.model.classifier[0]
+        new_input_features = outputs.shape[1] * outputs.shape[2] * outputs.shape[3]
+
+        # Create a new fully connected layer with the updated input features
+        new_fc_layer = torch.nn.Linear(in_features=new_input_features, out_features=old_fc_layer.out_features)
+        new_fc_layer = new_fc_layer.to(self.device)  # Move the new fully connected layer to device
+
+        # Replace the old FC layer with the new one in the classifier
+        self.model.classifier[0] = new_fc_layer
+        # self.model.to(self.device)  # Ensure the entire model is on the correct device
+
+    def PruneScalingFactors(self, filters_to_prune):
+        print("===Prune Scaling Factors===\n")
+        for layer_index in filters_to_prune:
+            filter_indexes = filters_to_prune[layer_index]
+            selected_filters = [f.unsqueeze(0) for i, f in enumerate(self.scaling_factors[layer_index][0]) if i not in filter_indexes]
+
+            if selected_filters:
+                new_scaling_factor = torch.cat(selected_filters)
+                new_scaling_factor = new_scaling_factor.view(1, new_scaling_factor.shape[0], 1, 1)
+                # Set requires_grad=True for the new scaling factor
+                # new_scaling_factor.requires_grad_(True)
+                new_scaling_factor = new_scaling_factor.detach().requires_grad_(True)
+                self.scaling_factors[layer_index] = new_scaling_factor
+
+    def PruneImportanceScore(self, filters_to_prune):
+        print("===Prune Importance Score===\n")
+        for layer_index in filters_to_prune:
+            filter_indexes = filters_to_prune[layer_index]
+            selected_filters = [f.unsqueeze(0) for i, f in enumerate(self.importance_scores[layer_index][0]) if i not in filter_indexes]
+
+            if selected_filters:
+                new_importance_score = torch.cat(selected_filters)
+                new_importance_score = new_importance_score.view(1, new_importance_score.shape[0], 1, 1)
+                self.importance_scores[layer_index] = new_importance_score
+
     def Finetune(self, num_epochs, learning_rate, momentum, checkpoint_epoch):
         logger.info("\n===Fine-tune the model to achieve W_s*===")
         optimizer = torch.optim.SGD(self.model.parameters(), lr=learning_rate, momentum=momentum)
         criterion = torch.nn.CrossEntropyLoss()
 
-        for epoch in range(num_epochs):
-            logger.info(f"Epoch {epoch + 1}/{num_epochs}")
-            self.model.train()
+        epoch = checkpoint_epoch
+
+        for epoch in range(epoch, num_epochs):
+            logger.info("Epoch " + str(epoch + 1) + "/" + str(num_epochs))
             for inputs, labels in self.train_loader:
                 inputs, labels = inputs.to(self.device), labels.to(self.device)
                 optimizer.zero_grad()
-                loss = self._forward_with_scaling_factors(inputs, labels, criterion)
+                outputs = self.model(inputs)
+                loss = criterion(outputs, labels)
                 loss.backward()
                 optimizer.step()
 
@@ -196,7 +277,7 @@ class Pruner:
 
     def LoadState(self, path):
         """
-        Load the prsuner's state from a file.
+        Load the pruner's state from a file.
 
         Args:
             path (str): The path to load the state from.

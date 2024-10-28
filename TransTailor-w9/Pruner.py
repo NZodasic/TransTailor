@@ -39,17 +39,23 @@ class Pruner:
 
             logger.info("\n===Train the factors alpha by optimizing the loss function===")
 
-            params_to_optimize = []
-            for sf in self.scaling_factors.keys():
-                if isinstance(self.scaling_factors[sf], list):
-                    for param in self.scaling_factors[sf]:
-                        if param.requires_grad:
-                            params_to_optimize.append(param)
-                        else:
-                            params_to_optimize.append(param.clone().detach().requires_grad_(True))
-                else:
-                    params_to_optimize.append(self.scaling_factors[sf].clone().detach().requires_grad_(True))
+            # params_to_optimize = []
+            
+            # Change the optimizer to SGD
+            params_to_optimize = itertools.chain(self.scaling_factors[sf] for sf in self.scaling_factors.keys())
             optimizer_alpha = torch.optim.SGD(params_to_optimize, lr=learning_rate, momentum=momentum)
+
+                
+                # for sf in self.scaling_factors.keys():
+                #     if isinstance(self.scaling_factors[sf], list):
+                #         for param in self.scaling_factors[sf]:
+                #             if param.requires_grad:
+                #                 params_to_optimize.append(param)
+                #             else:
+                #                 params_to_optimize.append(param.clone().detach().requires_grad_(True))
+                #     else:
+                #         params_to_optimize.append(self.scaling_factors[sf].clone().detach().requires_grad_(True))
+                # optimizer_alpha = torch.optim.SGD(params_to_optimize, lr=learning_rate, momentum=momentum)
 
             for epoch in range(num_epochs):
                 logger.info("Epoch " + str(epoch + 1) + "/" + str(num_epochs))
@@ -78,6 +84,7 @@ class Pruner:
 
     def GenerateImportanceScores(self):
             logger.info("Generating importance scores")
+            self.importance_scores = {} # Reset importance scores
             num_layers = len(self.model.features)
             criterion = torch.nn.CrossEntropyLoss()
 

@@ -5,6 +5,7 @@ from Pruner import Pruner
 import argparse
 import os
 import logging
+import time
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
@@ -83,6 +84,11 @@ def CalculateAccuracy(model, test_loader):
     accuracy = 100 * total_correct / total_samples
     return accuracy
 
+def TimeLog():
+    curr_time = time.strftime("%H:%M:%S", time.localtime())
+    print("Time log:", curr_time)
+
+
 if __name__ == "__main__":
     # LOAD ARGUMENTS
     logger.info("START MAIN PROGRAM!")
@@ -101,46 +107,60 @@ if __name__ == "__main__":
     logger.info("LOAD PRETRAINED MODEL: VGG-16 (ImageNet)")
     model = LoadModel(device)
 
-    pruner = Pruner(model, train_loader, device, amount=0.1, prune_batch_size=10)
-
-    # Load checkpoint if available
+    # INIT PRUNING SCHEME
+    pruner = Pruner(model, train_loader, device, amount=10)
     if os.path.isfile(CHECKPOINT_PATH):
         logger.info("Load model and pruning info from checkpoint...")
         pruner.LoadState(CHECKPOINT_PATH)
     else:
         pruner.Finetune(40, TA_LR, TA_MOMENTUM, 0)
+
         pruner.InitScalingFactors()
-        pruner.SaveState(SAVED_PATH.format(pruned_count=0))
+        pruner.SaveState(SAVED_PATH.format(pruned_count = 0))
 
     opt_accuracy = CalculateAccuracy(pruner.model, test_loader)
     print("Accuracy of finetuned model: ", opt_accuracy, flush=True)
 
     # START PRUNING PROCESS
     while True:
+        TimeLog()
         pruner.TrainScalingFactors(ROOT_DIR, 1, IA_LR, IA_MOMENTUM)
+        TimeLog()
         pruner.GenerateImportanceScores()
-        filters_to_prune = pruner.FindFilterToPrune(threshold=0.01)
+        # layer_to_prune, filter_to_prune = pruner.FindFilterToPrune()
+        filters_to_prune = pruner.FindFiltersToPrune()
+        # pruner.Prune(layer_to_prune, filter_to_prune)
+        TimeLog()
+        pruner.PruneAndRestructure(filters_to_prune)
+        TimeLog()
+        pruner.ModifyClassifier()
+        TimeLog()
+        pruner.PruneScalingFactors(filters_to_prune)
+        TimeLog()
+        pruner.PruneImportanceScore(filters_to_prune)
+        
+        sum_filters = 0 
+        for layer in filters_to_prune:
+            number_of_filters = len(filters_to_prune[layer])
+            sum_filters += number_of_filters
+        print("===Number of pruned filters is: ", sum_filters)
 
-        if not filters_to_prune:
-            break
-
-        pruner.PruneFilters(filters_to_prune)
-        print("===Prune {len(filters_to_prune)} th filter in ", flush=True)
-
-        pruned_count = len(pruner.pruned_filters)
-        if pruned_count % 10 == 0:
-            pruner.SaveState(SAVED_PATH.format(pruned_count=pruned_count))
+        # pruned_count = len(pruner.pruned_filters)
+        # if pruned_count % 10 == 0:
+        #     pruner.SaveState(SAVED_PATH.format(pruned_count = pruned_count))
 
         for param in pruner.model.parameters():
             param.requires_grad = True
-        pruner.Finetune(TA_EPOCH, TA_LR, TA_MOMENTUM, 0)
 
+        TimeLog()
+        pruner.Finetune(TA_EPOCH, TA_LR, TA_MOMENTUM, 0)
+        TimeLog()
         pruned_accuracy = CalculateAccuracy(pruner.model, test_loader)
         print("Accuracy of pruned model: ", pruned_accuracy, flush=True)
 
-        if opt_accuracy - pruned_accuracy > pruner.amount:
+        if abs(opt_accuracy - pruned_accuracy) > pruner.amount:
             print("Optimization done!", flush=True)
             torch.save(pruner.model.state_dict(), RESULT_PATH)
             break
         else:
-            opt_accuracy = pruned_accuracy  # Update optimal accuracy
+            print("Update optimal model", flush=True)

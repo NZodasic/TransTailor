@@ -82,6 +82,10 @@ def CalculateAccuracy(model, test_loader, device):
     accuracy = 100 * total_correct / total_samples
     return accuracy
 
+def TimeLog():
+    curr_time = time.strftime("%H:%M:%S", time.localtime())
+    print("Time log:", curr_time)
+
 
 if __name__ == "__main__":
     # LOAD ARGUMENTS
@@ -100,23 +104,19 @@ if __name__ == "__main__":
     logger.info("LOAD DATASET: CIFAR10")
     train_loader, test_loader = LoadData(NUM_WORKER, BATCH_SIZE)
     train_dataset, train_loader, test_loader = LoadData(NUM_WORKER, BATCH_SIZE, subset_size=1000)
-    logger.info(f"Number of training samples: {len(train_dataset)}")
-    logger.info(f"Number of batches in train_loader: {len(train_loader)}")
-    logger.info(f"Number of batches in test_loader: {len(test_loader)}")
-    logger.info(f"Batch size: {train_loader.batch_size}")
 
     # LOAD MODEL
     logger.info("LOAD PRETRAINED MODEL: VGG-16 (ImageNet)")
     model = LoadModel(device)
     
-    pruner = Pruner(model, train_loader, device, amount=0.1, prune_batch_size=10)
-    model, scaling_factors, importance_scores, pruned_filters = pruner.LoadState("/content/drive/MyDrive/BCU-documents/checkpoint_0.pkl")
+    pruner = Pruner(model, train_loader, device, amount=10)
+    # model, scaling_factors, importance_scores, pruned_filters = pruner.LoadState("/content/drive/MyDrive/BCU-documents/checkpoint_0.pkl")
 
-    initial_accuracy = CalculateAccuracy(model, test_loader, device)
-    logger.info("Accuracy of finetuned model: ", initial_accuracy, flush=True)
+    # initial_accuracy = CalculateAccuracy(model, test_loader, device)
+    # logger.info("Accuracy of finetuned model: ", initial_accuracy, flush=True)
 
 
-    pruner = Pruner(model, train_loader, device, amount=0.1, prune_batch_size=10)
+    # pruner = Pruner(model, train_loader, device, amount=0.1, prune_batch_size=10)
 
     # Load checkpoint if available
     if os.path.isfile(CHECKPOINT_PATH):
@@ -135,6 +135,7 @@ if __name__ == "__main__":
         logger.info(f"Starting pruning round {round + 1}/{PRUNING_ROUNDS}")
         
         # Train scaling factors
+        TimeLog()
         pruner.TrainScalingFactors(model, scaling_factors, train_loader, IA_EPOCH, IA_LR, IA_MOMENTUM)
         
         # Generate importance scores
