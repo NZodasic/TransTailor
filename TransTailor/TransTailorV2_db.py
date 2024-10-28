@@ -128,7 +128,7 @@ if __name__ == "__main__":
         TimeLog()
         pruner.GenerateImportanceScores()
         # layer_to_prune, filter_to_prune = pruner.FindFilterToPrune()
-        filters_to_prune = pruner.FindFiltersToPrune()
+        filters_to_prune = pruner.FindFiltersToPrune(prune_percentage=5)
         # pruner.Prune(layer_to_prune, filter_to_prune)
         TimeLog()
         pruner.PruneAndRestructure(filters_to_prune)

@@ -22,14 +22,12 @@ class Pruner:
     def InitScalingFactors(self):
         logger.info("Init alpha from scratch!")
         num_layers = len(self.model.features)
-
-        # self.scaling_factors = {}
+        self.scaling_factors = {}
 
         for i in range(num_layers):
             layer = self.model.features[i]
-            
             if isinstance(layer, torch.nn.Conv2d):
-                logger.info(layer, layer.out_channels)
+                print(layer, layer.out_channels)
                 self.scaling_factors[i] = torch.rand((1, layer.out_channels, 1, 1), requires_grad=True)
 
     def TrainScalingFactors(self, root, num_epochs, learning_rate, momentum):
@@ -112,23 +110,73 @@ class Pruner:
 
     #     return min_layer, min_filter
 
-    def FindFiltersToPrune(self):
-        """
-        Identify all filters with the minimum importance score (β) to prune them at once.
-        """
-        min_value = float('inf')
-        filters_to_prune = {}  # List to store filters to prune
+    # def FindFiltersToPrune(self):
+    #     """
+    #     Identify all filters with the minimum importance score (β) to prune them at once.
+    #     """
+    #     min_value = float('inf')
+    #     filters_to_prune = {}  # List to store filters to prune
 
-        for layer_index, scores_tensor in self.importance_scores.items():
-            filters_to_prune[layer_index] = []
-            for filter_index, score in enumerate(scores_tensor[0]):
-                if score < min_value:
-                    min_value = score.item()  # Update the minimum value
-                    filters_to_prune[layer_index] = [filter_index]  # Reset the list
-                elif score == min_value:
-                    filters_to_prune[layer_index].append(filter_index)  # Add to the list if it matches min value
+    #     for layer_index, scores_tensor in self.importance_scores.items():
+    #         filters_to_prune[layer_index] = []
+    #         for filter_index, score in enumerate(scores_tensor[0]):
+    #             if score < min_value:
+    #                 min_value = score.item()  # Update the minimum value
+    #                 filters_to_prune[layer_index] = [filter_index]  # Reset the list
+    #             elif score == min_value:
+    #                 filters_to_prune[layer_index].append(filter_index)  # Add to the list if it matches min value
 
-        return filters_to_prune  # Return the list of all filters to prune
+    #     return filters_to_prune  # Return the list of all filters to prune
+
+    def FindFiltersToPrune(self, prune_percentage=5):
+        """
+        Identify filters with importance scores in the bottom k% to prune them.
+        
+        Args:
+            prune_percentage (float): Percentage of filters to prune (default: 5%)
+            
+        Returns:
+            dict: Dictionary mapping layer indices to lists of filter indices to prune
+        """
+        # Collect all importance scores across all layers
+        all_scores = []
+        filter_mapping = []  # To keep track of (layer_idx, filter_idx) for each score
+        
+        for layer_idx, scores_tensor in self.importance_scores.items():
+            for filter_idx, score in enumerate(scores_tensor[0]):
+                all_scores.append(score.item())
+                filter_mapping.append((layer_idx, filter_idx))
+        
+        # Calculate the threshold for bottom k%
+        num_filters = len(all_scores)
+        num_to_prune = int(num_filters * (prune_percentage / 100))
+        
+        if num_to_prune == 0:
+            print(f"Warning: {prune_percentage}% of {num_filters} filters is less than 1. Defaulting to 1 filter.")
+            num_to_prune = 1
+        
+        # Get indices of bottom k% scores
+        sorted_indices = sorted(range(len(all_scores)), key=lambda i: all_scores[i])
+        bottom_k_indices = sorted_indices[:num_to_prune]
+        
+        # Group filters by layer
+        filters_to_prune = {}
+        for idx in bottom_k_indices:
+            layer_idx, filter_idx = filter_mapping[idx]
+            if layer_idx not in filters_to_prune:
+                filters_to_prune[layer_idx] = []
+            filters_to_prune[layer_idx].append(filter_idx)
+        
+        # Sort filter indices within each layer for consistent pruning
+        for layer_idx in filters_to_prune:
+            filters_to_prune[layer_idx].sort()
+        
+        print(f"Total filters: {num_filters}")
+        print(f"Pruning {num_to_prune} filters ({prune_percentage}%)")
+        for layer_idx in filters_to_prune:
+            print(f"Layer {layer_idx}: pruning {len(filters_to_prune[layer_idx])} filters")
+            
+        return filters_to_prune
 
     def Prune(self, layer_to_prune, filter_to_prune):
         pruned_layer = self.model.features[layer_to_prune]
