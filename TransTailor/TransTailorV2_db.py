@@ -10,8 +10,8 @@ import time
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
 
-TA_EPOCH = 1
-TA_LR = 0.005
+TA_EPOCH = 10
+TA_LR = 0.001
 TA_MOMENTUM = 0.9
 
 IA_EPOCH = 1
@@ -34,8 +34,11 @@ def LoadData(numWorker, batchSize):
     # Define the data transformation
     transform = transforms.Compose([
         transforms.Resize((224, 224)),
+        transforms.RandomCrop(224, padding=4),
+        transforms.RandomHorizontalFlip(),
         transforms.ToTensor(),
         transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+
     ])
 
     data_path = os.path.join(ROOT_DIR, "data")
@@ -123,20 +126,19 @@ if __name__ == "__main__":
 
     # START PRUNING PROCESS
     while True:
-        TimeLog()
         pruner.TrainScalingFactors(ROOT_DIR, 1, IA_LR, IA_MOMENTUM)
-        TimeLog()
         pruner.GenerateImportanceScores()
-        # layer_to_prune, filter_to_prune = pruner.FindFilterToPrune()
         filters_to_prune = pruner.FindFiltersToPrune(prune_percentage=5)
-        # pruner.Prune(layer_to_prune, filter_to_prune)
-        TimeLog()
+
+        filters_to_prune = pruner.FindFiltersToPrune(
+            model_complexity_factor=len(list(model.features))/10
+        )
         pruner.PruneAndRestructure(filters_to_prune)
-        TimeLog()
+
         pruner.ModifyClassifier()
-        TimeLog()
+
         pruner.PruneScalingFactors(filters_to_prune)
-        TimeLog()
+
         pruner.PruneImportanceScore(filters_to_prune)
         
         sum_filters = 0 
@@ -152,9 +154,8 @@ if __name__ == "__main__":
         for param in pruner.model.parameters():
             param.requires_grad = True
 
-        TimeLog()
         pruner.Finetune(TA_EPOCH, TA_LR, TA_MOMENTUM, 0)
-        TimeLog()
+
         pruned_accuracy = CalculateAccuracy(pruner.model, test_loader)
         print("Accuracy of pruned model: ", pruned_accuracy, flush=True)
 
