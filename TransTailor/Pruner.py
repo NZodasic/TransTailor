@@ -102,7 +102,7 @@ class Pruner:
         # Calculate adaptive pruning percentage based on model complexity
         if model_complexity_factor is None:
             model_complexity_factor = len(list(self.model.features)) / 10
-        prune_percentage = max(3, min(10, 5 * model_complexity_factor))
+        prune_percentage = max(1, min(5, 3 * model_complexity_factor))
 
         all_scores = []
         filter_mapping = []  # To keep track of (layer_idx, filter_idx) for each score
@@ -290,12 +290,16 @@ class Pruner:
         optimizer = torch.optim.SGD(self.model.parameters(),
                                     lr=initial_lr,
                                     momentum=momentum,
-                                    weight_decay=1e-4)
-        scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=10, gamma=0.1)
+                                    weight_decay=1e-3)
+        scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max= num_epochs)
         criterion = torch.nn.CrossEntropyLoss()
+        best_accuracy = 0
 
         for epoch in range(checkpoint_epoch, num_epochs):
             logger.info("Epoch " + str(epoch + 1) + "/" + str(num_epochs))
+            self.model.train()
+            total_loss = 0
+            
             for inputs, labels in self.train_loader:
                 inputs, labels = inputs.to(self.device), labels.to(self.device)
                 optimizer.zero_grad()
@@ -303,7 +307,29 @@ class Pruner:
                 loss = criterion(outputs, labels)
                 loss.backward()
                 optimizer.step()
+                total_loss += loss.item()
             scheduler.step()
+            
+            self.model.eval()
+            correct = 0
+            total = 0
+            
+            with torch.no_grad():
+                for inputs, labels in self.test_loader:
+                    inputs, labels = inputs.to(self.device), labels.to(self.device)
+                    outputs = self.model(inputs)
+                    _, predicted = torch.max(outputs.data, 1)
+                    total += labels.size(0)
+                    correct += (predicted == labels).sum().item()
+            accuracy = 100 * correct / total
+            logger.info(f"Epoch {epoch+1} Validation Accuracy: {accuracy}%")
+            
+            if accuracy > best_accuracy:
+                best_accuracy = accuracy
+                torch.save(self.model.state_dict(), 'best_model.pth')
+                
+        return best_accuracy
+
 
     def SaveState(self, path):
         """
