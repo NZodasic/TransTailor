@@ -37,26 +37,45 @@ def LoadData(numWorker, batchSize):
     #     transforms.ToTensor(),
     #     transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
 
+    # transform = transforms.Compose([
+    #     transforms.RandomResizedCrop(224),
+    #     transforms.RandomHorizontalFlip(),
+    #     transforms.RandomRotation(15),
+    #     transforms.ColorJitter(brightness=0.2, contrast=0.2),
+    #     transforms.ToTensor(),
+    #     transforms.Normalize(mean=[0.485, 0.456, 0.406], 
+    #                         std=[0.229, 0.224, 0.225])
+    # ])
+    
     transform = transforms.Compose([
-        transforms.RandomResizedCrop(224),
-        transforms.RandomHorizontalFlip(),
+        transforms.Resize((224, 224)),
+        transforms.RandomHorizontalFlip(p=0.5),
         transforms.RandomRotation(15),
-        transforms.ColorJitter(brightness=0.2, contrast=0.2),
+        transforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2),
+        transforms.RandomAffine(degrees=0, translate=(0.1, 0.1)),
         transforms.ToTensor(),
         transforms.Normalize(mean=[0.485, 0.456, 0.406], 
-                            std=[0.229, 0.224, 0.225])
+                           std=[0.229, 0.224, 0.225]),
+        transforms.RandomErasing(p=0.2)
     ])
+
     
     data_path = os.path.join(ROOT_DIR, "data")
 
     # Load the CIFAR10 train_dataset
-    train_dataset = torchvision.datasets.CIFAR10(root=data_path, train=True, download=True, transform=transform)
+    train_dataset = torchvision.datasets.CIFAR10(root=data_path, 
+                                                 train=True, 
+                                                 download=True, 
+                                                 transform=transform)
 
     kwargs = {'num_workers': numWorker, 'pin_memory': True} if device == 'cuda' else {}
     train_loader = torch.utils.data.DataLoader(train_dataset, batchSize, shuffle=True, **kwargs)
 
     # Load test_dataset
-    test_dataset = torchvision.datasets.CIFAR10(root=data_path, train=False, download=True, transform=transform)
+    test_dataset = torchvision.datasets.CIFAR10(root=data_path, 
+                                                train=True, 
+                                                download=True, 
+                                                transform=transform)
 
     kwargs = {'num_workers': 4, 'pin_memory': True} if device == 'cuda' else {}
     test_loader = torch.utils.data.DataLoader(test_dataset, batchSize, shuffle=False, **kwargs)
