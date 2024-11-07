@@ -10,8 +10,8 @@ import time
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
 
-TA_EPOCH = 1
-TA_LR = 0.005
+TA_EPOCH = 40
+TA_LR = 0.00005
 TA_MOMENTUM = 0.9
 
 IA_EPOCH = 1
@@ -141,7 +141,7 @@ if __name__ == "__main__":
         logger.info("Load model and pruning info from checkpoint...")
         pruner.LoadState(CHECKPOINT_PATH)
     else:
-        pruner.Finetune(40, TA_LR, TA_MOMENTUM, 0)
+        pruner.Finetune(40, TA_LR, TA_MOMENTUM, 5)
 
         pruner.InitScalingFactors()
         pruner.SaveState(SAVED_PATH.format(pruned_count = 0))
