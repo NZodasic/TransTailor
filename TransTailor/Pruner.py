@@ -249,6 +249,262 @@ class Pruner:
                 new_importance_score = new_importance_score.view(1, new_importance_score.shape[0], 1, 1)
                 self.importance_scores[layer_index] = new_importance_score
 
+    # def Finetune(self, num_epochs, learning_rate, momentum, checkpoint_epoch):
+    #     best_accuracy = 0.0
+    #     patience_counter = 0
+
+    #     # Enable gradients for all model parameters for fine-tuning
+    #     for param in self.model.parameters():
+    #         param.requires_grad = True
+            
+    #     optimizer = torch.optim.SGD(self.model.parameters(), lr=learning_rate, momentum=momentum)
+    #     criterion = torch.nn.CrossEntropyLoss()
+
+    #     class ImportanceMultiplier(torch.autograd.Function):
+    #         @staticmethod
+    #         def forward(ctx, input, importance_score):
+    #             ctx.save_for_backward(importance_score)
+    #             return input * importance_score
+
+    #         @staticmethod
+    #         def backward(ctx, grad_output):
+    #             importance_score, = ctx.saved_tensors
+    #             # Multiply the incoming gradient with importance score
+    #             grad_input = grad_output * importance_score
+    #             # Return None for importance_score gradient since it's fixed
+    #             return grad_input, None
+
+    #     multiply_importance = ImportanceMultiplier.apply
+
+    #     for epoch in range(num_epochs):
+    #         self.model.train()
+    #         total_loss = 0
+    #         correct = 0
+    #         total = 0
+
+    #         for batch_idx, (inputs, labels) in enumerate(self.train_loader):
+    #             inputs, labels = inputs.to(self.device), labels.to(self.device)
+    #             optimizer.zero_grad()
+                
+    #             # Forward pass through features with importance scores
+    #             x = inputs
+    #             for idx, layer in enumerate(self.model.features):
+    #                 x = layer(x)
+    #                 if isinstance(layer, torch.nn.Conv2d) and idx in self.importance_scores:
+    #                     importance_score = self.importance_scores[idx].to(self.device)
+    #                     x = multiply_importance(x, importance_score)
+                
+    #             # Flatten and pass through classifier
+    #             x = x.view(x.size(0), -1)
+    #             outputs = self.model.classifier(x)
+                
+    #             loss = criterion(outputs, labels)
+    #             total_loss += loss.item()
+                
+    #             # Backward pass
+    #             loss.backward()
+    #             optimizer.step()
+
+    #             # Calculate accuracy
+    #             _, predicted = outputs.max(1)
+    #             total += labels.size(0)
+    #             correct += predicted.eq(labels).sum().item()
+
+    #             if (batch_idx + 1) % 100 == 0:
+    #                 print(f'Epoch [{epoch + 1}/{num_epochs}], '
+    #                     f'Step [{batch_idx + 1}/{len(self.train_loader)}], '
+    #                     f'Loss: {loss.item():.4f}, '
+    #                     f'Acc: {100. * correct / total:.2f}%')
+
+    #         epoch_loss = total_loss / len(self.train_loader)
+    #         epoch_acc = 100. * correct / total
+    #         print(f'Epoch [{epoch + 1}/{num_epochs}], '
+    #             f'Loss: {epoch_loss:.4f}, '
+    #             f'Acc: {epoch_acc:.2f}%')
+
+    #     return self.model
+    
+    # def Finetune(self, num_epochs, learning_rate, momentum, checkpoint_epoch):
+    #     best_accuracy = 0.0
+    #     patience_counter = 0
+
+    #     # Enable gradients for all model parameters for fine-tuning
+    #     for param in self.model.parameters():
+    #         param.requires_grad = True
+                
+    #     optimizer = torch.optim.SGD(self.model.parameters(), lr=learning_rate, momentum=momentum)
+    #     criterion = torch.nn.CrossEntropyLoss()
+
+    #     class ImportanceMultiplier(torch.autograd.Function):
+    #         @staticmethod
+    #         def forward(ctx, input, importance_score):
+    #             ctx.save_for_backward(input, importance_score)
+    #             return input * importance_score
+
+    #         @staticmethod
+    #         def backward(ctx, grad_output):
+    #             input, importance_score = ctx.saved_tensors
+    #             # In backward pass:
+    #             # 1. Multiply gradient with importance score (beta)
+    #             # 2. Divide by the input value to maintain proper scaling
+    #             grad_input = grad_output * importance_score
+    #             # We don't need gradient for importance_score since it's fixed
+    #             return grad_input, None
+
+    #     multiply_importance = ImportanceMultiplier.apply
+
+    #     for epoch in range(num_epochs):
+    #         self.model.train()
+    #         total_loss = 0
+    #         correct = 0
+    #         total = 0
+
+    #         for batch_idx, (inputs, labels) in enumerate(self.train_loader):
+    #             inputs, labels = inputs.to(self.device), labels.to(self.device)
+    #             optimizer.zero_grad()
+                    
+    #             # Forward pass through features with importance scores
+    #             x = inputs
+    #             layer_outputs = {}  # Store intermediate outputs for gradient computation
+                
+    #             for idx, layer in enumerate(self.model.features):
+    #                 x = layer(x)
+    #                 if isinstance(layer, torch.nn.Conv2d) and idx in self.importance_scores:
+    #                     # Store the output before importance multiplication
+    #                     layer_outputs[idx] = x.clone()
+    #                     importance_score = self.importance_scores[idx].to(self.device)
+    #                     x = multiply_importance(x, importance_score)
+                    
+    #             # Flatten and pass through classifier
+    #             x = x.view(x.size(0), -1)
+    #             outputs = self.model.classifier(x)
+                    
+    #             loss = criterion(outputs, labels)
+    #             total_loss += loss.item()
+                    
+    #             # Backward pass
+    #             loss.backward()
+                
+    #             # Scale gradients for layers with importance scores
+    #             for idx, layer in enumerate(self.model.features):
+    #                 if isinstance(layer, torch.nn.Conv2d) and idx in self.importance_scores:
+    #                     if layer.weight.grad is not None:
+    #                         # Apply importance score scaling to gradients
+    #                         importance_score = self.importance_scores[idx].to(self.device)
+    #                         layer.weight.grad = layer.weight.grad * importance_score.squeeze()
+                
+    #             optimizer.step()
+
+    #             # Calculate accuracy
+    #             _, predicted = outputs.max(1)
+    #             total += labels.size(0)
+    #             correct += predicted.eq(labels).sum().item()
+
+    #             if (batch_idx + 1) % 100 == 0:
+    #                 print(f'Epoch [{epoch + 1}/{num_epochs}], '
+    #                     f'Step [{batch_idx + 1}/{len(self.train_loader)}], '
+    #                     f'Loss: {loss.item():.4f}, '
+    #                     f'Acc: {100. * correct / total:.2f}%')
+
+    #         epoch_loss = total_loss / len(self.train_loader)
+    #         epoch_acc = 100. * correct / total
+    #         print(f'Epoch [{epoch + 1}/{num_epochs}], '
+    #             f'Loss: {epoch_loss:.4f}, '
+    #             f'Acc: {epoch_acc:.2f}%')
+
+    #     return self.model
+    
+    # def Finetune(self, num_epochs, learning_rate, momentum, checkpoint_epoch):
+    #     best_accuracy = 0.0
+    #     patience_counter = 0
+
+    #     # Enable gradients for all model parameters for fine-tuning
+    #     for param in self.model.parameters():
+    #         param.requires_grad = True
+                
+    #     optimizer = torch.optim.SGD(self.model.parameters(), lr=learning_rate, momentum=momentum)
+    #     criterion = torch.nn.CrossEntropyLoss()
+
+    #     class ImportanceMultiplier(torch.autograd.Function):
+    #         @staticmethod
+    #         def forward(ctx, input, importance_score):
+    #             # Save both input and importance score for backward pass
+    #             ctx.save_for_backward(input, importance_score)
+    #             # Forward: multiply by beta
+    #             return input * importance_score
+
+    #         @staticmethod
+    #         def backward(ctx, grad_output):
+    #             input, importance_score = ctx.saved_tensors
+    #             # In backward pass:
+    #             # 1. Multiply gradient with importance score (beta)
+    #             # 2. Then divide by beta to remove its effect from final gradients
+    #             # This ensures beta only affects relative importance during training
+    #             grad_input = grad_output * importance_score / (importance_score + 1e-8)  # Add small epsilon to prevent division by zero
+    #             return grad_input, None
+
+    #     multiply_importance = ImportanceMultiplier.apply
+
+    #     for epoch in range(num_epochs):
+    #         self.model.train()
+    #         total_loss = 0
+    #         correct = 0
+    #         total = 0
+
+    #         for batch_idx, (inputs, labels) in enumerate(self.train_loader):
+    #             inputs, labels = inputs.to(self.device), labels.to(self.device)
+    #             optimizer.zero_grad()
+                    
+    #             # Forward pass through features with importance scores
+    #             x = inputs
+    #             layer_outputs = {}  # Store intermediate outputs
+                
+    #             for idx, layer in enumerate(self.model.features):
+    #                 x = layer(x)
+    #                 if isinstance(layer, torch.nn.Conv2d) and idx in self.importance_scores:
+    #                     importance_score = self.importance_scores[idx].to(self.device)
+    #                     # Apply importance score in forward pass
+    #                     x = multiply_importance(x, importance_score)
+                    
+    #             # Flatten and pass through classifier
+    #             x = x.view(x.size(0), -1)
+    #             outputs = self.model.classifier(x)
+                    
+    #             loss = criterion(outputs, labels)
+    #             total_loss += loss.item()
+                    
+    #             # Backward pass
+    #             loss.backward()
+                
+    #             # Scale gradients for layers with importance scores
+    #             for idx, layer in enumerate(self.model.features):
+    #                 if isinstance(layer, torch.nn.Conv2d) and idx in self.importance_scores:
+    #                     if layer.weight.grad is not None:
+    #                         importance_score = self.importance_scores[idx].to(self.device)
+    #                         # Apply importance score and then divide it out
+    #                         layer.weight.grad = layer.weight.grad * importance_score.squeeze() / (importance_score.squeeze() + 1e-8)
+                
+    #             optimizer.step()
+
+    #             # Calculate accuracy
+    #             _, predicted = outputs.max(1)
+    #             total += labels.size(0)
+    #             correct += predicted.eq(labels).sum().item()
+
+    #             if (batch_idx + 1) % 100 == 0:
+    #                 print(f'Epoch [{epoch + 1}/{num_epochs}], '
+    #                     f'Step [{batch_idx + 1}/{len(self.train_loader)}], '
+    #                     f'Loss: {loss.item():.4f}, '
+    #                     f'Acc: {100. * correct / total:.2f}%')
+
+    #         epoch_loss = total_loss / len(self.train_loader)
+    #         epoch_acc = 100. * correct / total
+    #         print(f'Epoch [{epoch + 1}/{num_epochs}], '
+    #             f'Loss: {epoch_loss:.4f}, '
+    #             f'Acc: {epoch_acc:.2f}%')
+
+    #     return self.model
+    
     def Finetune(self, num_epochs, learning_rate, momentum, checkpoint_epoch):
         best_accuracy = 0.0
         patience_counter = 0
@@ -256,22 +512,27 @@ class Pruner:
         # Enable gradients for all model parameters for fine-tuning
         for param in self.model.parameters():
             param.requires_grad = True
-            
+                
         optimizer = torch.optim.SGD(self.model.parameters(), lr=learning_rate, momentum=momentum)
         criterion = torch.nn.CrossEntropyLoss()
 
         class ImportanceMultiplier(torch.autograd.Function):
             @staticmethod
             def forward(ctx, input, importance_score):
-                ctx.save_for_backward(importance_score)
+                # Save both input and importance score for backward pass
+                ctx.save_for_backward(input, importance_score)
+                # Forward: multiply by importance score with proper broadcasting
+                # Reshape importance score to [1, channels, 1, 1] for proper broadcasting
+                importance_score = importance_score.view(1, -1, 1, 1)
                 return input * importance_score
 
             @staticmethod
             def backward(ctx, grad_output):
-                importance_score, = ctx.saved_tensors
-                # Multiply the incoming gradient with importance score
-                grad_input = grad_output * importance_score
-                # Return None for importance_score gradient since it's fixed
+                input, importance_score = ctx.saved_tensors
+                # Reshape importance score for broadcasting
+                importance_score = importance_score.view(1, -1, 1, 1)
+                # Apply importance score with proper broadcasting
+                grad_input = grad_output * importance_score / (importance_score + 1e-8)
                 return grad_input, None
 
         multiply_importance = ImportanceMultiplier.apply
@@ -285,24 +546,40 @@ class Pruner:
             for batch_idx, (inputs, labels) in enumerate(self.train_loader):
                 inputs, labels = inputs.to(self.device), labels.to(self.device)
                 optimizer.zero_grad()
-                
+                    
                 # Forward pass through features with importance scores
                 x = inputs
+                
                 for idx, layer in enumerate(self.model.features):
                     x = layer(x)
                     if isinstance(layer, torch.nn.Conv2d) and idx in self.importance_scores:
                         importance_score = self.importance_scores[idx].to(self.device)
+                        # Ensure importance score has the right number of channels
+                        if importance_score.size(0) != x.size(1):
+                            raise ValueError(f"Importance score size ({importance_score.size(0)}) must match "
+                                        f"number of channels in feature map ({x.size(1)}) at layer {idx}")
+                        # Apply importance score with proper broadcasting
                         x = multiply_importance(x, importance_score)
-                
+                    
                 # Flatten and pass through classifier
                 x = x.view(x.size(0), -1)
                 outputs = self.model.classifier(x)
-                
+                    
                 loss = criterion(outputs, labels)
                 total_loss += loss.item()
-                
+                    
                 # Backward pass
                 loss.backward()
+                
+                # Scale gradients for layers with importance scores
+                for idx, layer in enumerate(self.model.features):
+                    if isinstance(layer, torch.nn.Conv2d) and idx in self.importance_scores:
+                        if layer.weight.grad is not None:
+                            importance_score = self.importance_scores[idx].to(self.device)
+                            # Reshape importance score for proper broadcasting with gradients
+                            importance_score = importance_score.view(-1, 1, 1, 1)
+                            layer.weight.grad = layer.weight.grad * importance_score / (importance_score + 1e-8)
+                
                 optimizer.step()
 
                 # Calculate accuracy
@@ -323,6 +600,7 @@ class Pruner:
                 f'Acc: {epoch_acc:.2f}%')
 
         return self.model
+    
     
     def SaveState(self, path):
         """
