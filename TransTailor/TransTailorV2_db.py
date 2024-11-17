@@ -123,8 +123,8 @@ if __name__ == "__main__":
         pruner.SaveState(SAVED_PATH.format(pruned_count = 0))
 
     opt_accuracy = CalculateAccuracy(pruner.model, test_loader)
-    print("Accuracy of finetuned model: ", opt_accuracy, flush=True)
-    logger.info("Accuracy of finetuned model: ", opt_accuracy, flush=True)
+    print("Accuracy of finetuned model: ", opt_accuracy)
+    logger.info("Accuracy of finetuned model: ", opt_accuracy)
 
 
     # START PRUNING PROCESS
