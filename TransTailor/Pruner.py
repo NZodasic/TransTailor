@@ -11,8 +11,6 @@ import os
 import logging
 
 
-
-
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
 
@@ -40,7 +38,8 @@ class Pruner:
             param.requires_grad = False
 
         for name, param in self.scaling_factors.items():
-            self.scaling_factors[name] = torch.tensor(param.data, requires_grad=True, device=param.device)
+            # self.scaling_factors[name] = torch.tensor(param.data, requires_grad=True, device=param.device)
+            self.scaling_factors[name] = param.clone().detach().requires_grad_(True)
 
 
         criterion = torch.nn.CrossEntropyLoss()
@@ -82,7 +81,6 @@ class Pruner:
     def GenerateImportanceScores(self):
         self.model.eval()
         logger.info("\n===Generate importance score===")
-        print("===Generate importance score===")
         self.importance_scores = {}
         num_layers = len(self.model.features)
         criterion = torch.nn.CrossEntropyLoss()
@@ -126,7 +124,6 @@ class Pruner:
         num_to_prune = int(num_filters * (prune_percentage / 100))
 
         if num_to_prune == 0:
-            print(f"Warning: {prune_percentage}% of {num_filters} filters is less than 1. Defaulting to 1 filter.")
             logger.info(f"Warning: {prune_percentage}% of {num_filters} filters is less than 1. Defaulting to 1 filter.")
             num_to_prune = 1
 
@@ -146,7 +143,6 @@ class Pruner:
         for layer_idx in filters_to_prune:
             filters_to_prune[layer_idx].sort()
 
-        print(f"Total filters: {num_filters}")
         logger.info(f"Total filters: {num_filters}")
 
         return filters_to_prune
@@ -196,7 +192,6 @@ class Pruner:
         return next_new_conv
 
     def PruneAndRestructure(self, filters_to_prune):
-        print("===Prune and Restructre===\n")
         logger.info("===Prune and Restructre===\n")
         for layer_to_prune in filters_to_prune:
             next_layer_index = layer_to_prune + 1
@@ -212,7 +207,6 @@ class Pruner:
 
 
     def ModifyClassifier(self):
-        print("===Modify classifier===\n")
         logger.info("===Modify classifier===\n")
         last_conv_layer = None
         for layer in self.model.features:
@@ -245,7 +239,6 @@ class Pruner:
         self.model.to(self.device)  # Ensure the entire model is on the correct device
 
     def PruneScalingFactors(self, filters_to_prune):
-        print("===Prune Scaling Factors===\n")
         logger.info("===Prune Scaling Factors===\n")
         for layer_index in filters_to_prune:
             filter_indexes = filters_to_prune[layer_index]
@@ -259,7 +252,6 @@ class Pruner:
                 self.scaling_factors[layer_index] = new_scaling_factor.to(self.device)
 
     def PruneImportanceScore(self, filters_to_prune):
-        print("===Prune Importance Score===\n")
         logger.info("===Prune Importance Score===\n")
         for layer_index in filters_to_prune:
             filter_indexes = filters_to_prune[layer_index]
@@ -297,11 +289,9 @@ class Pruner:
                 optimizer.step()
                 total_loss += loss.item()
 
-            print(f"Epoch [{epoch+1}/{num_epochs}], Loss: {total_loss / len(self.train_loader):.4f}")
             logger.info(f"Epoch [{epoch+1}/{num_epochs}], Loss: {total_loss / len(self.train_loader):.4f}")
 
     def Finetune(self, num_epochs, learning_rate, momentum, checkpoint_epoch):
-        print("\n===Fine-tune the model to achieve W_s*===")
         logger.info("\n===Fine-tune the model to achieve W_s*===")
         optimizer = torch.optim.SGD(self.model.parameters(), lr=learning_rate, momentum=momentum)
         criterion = torch.nn.CrossEntropyLoss()

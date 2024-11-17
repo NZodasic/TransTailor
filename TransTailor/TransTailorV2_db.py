@@ -123,8 +123,8 @@ if __name__ == "__main__":
         pruner.SaveState(SAVED_PATH.format(pruned_count = 0))
 
     opt_accuracy = CalculateAccuracy(pruner.model, test_loader)
-    print("Accuracy of finetuned model: {accuracy:.2f}%")
-    logger.info("Accuracy of finetuned model: {accuracy:.2f}%")
+    print(f"Accuracy of finetuned model: {opt_accuracy:.2f}%")
+    logger.info(f"Accuracy of finetuned model: {opt_accuracy:.2f}%")
 
 
     # START PRUNING PROCESS
@@ -135,9 +135,8 @@ if __name__ == "__main__":
         TimeLog()
         pruner.GenerateImportanceScores()
         
-        # layer_to_prune, filter_to_prune = pruner.FindFilterToPrune()
+        TimeLog()
         filters_to_prune = pruner.FindFiltersToPrune(PRUNING_AMOUNT)
-        # pruner.Prune(layer_to_prune, filter_to_prune)
         
         TimeLog()
         pruner.PruneAndRestructure(filters_to_prune)
@@ -158,11 +157,12 @@ if __name__ == "__main__":
         for layer in filters_to_prune:
             number_of_filters = len(filters_to_prune[layer])
             sum_filters += number_of_filters
-        print("===Number of pruned filters is: ", sum_filters)
+        print("===Number of pruned filters is: ", sum_filters, flush=True)
 
-        pruned_count = len(pruner.pruned_filters)
-        if pruned_count % 10 == 0:
-            pruner.SaveState(SAVED_PATH.format(pruned_count = pruned_count))
+        # pruned_count = len(pruner.pruned_filters)
+        
+        # if pruned_count % 10 == 0:
+        #     pruner.SaveState(SAVED_PATH.format(pruned_count = pruned_count))
         
         
 
@@ -173,15 +173,14 @@ if __name__ == "__main__":
         TimeLog()
         pruned_accuracy = CalculateAccuracy(pruner.model, test_loader)
         
-        print("Accuracy of pruned model: {pruned_accuracy:.2f}%", flush=True)
-        logger.info(f"Accuracy of pruned model: {pruned_accuracy:.2f}%", flush=True)
+        print(f"Accuracy of pruned model: {pruned_accuracy:.2f}%")
+        logger.info(f"Accuracy of pruned model: {pruned_accuracy:.2f}%")
         
-        pruned_filters = len(pruner.pruned_filters)
-        print("Number of pruned filters: ", pruned_filters, flush=True)
 
+        
         if abs(opt_accuracy - pruned_accuracy) > pruner.amount:
-            print("Optimization done!", flush=True)
+            print(f"Optimization done!", flush=True)
             torch.save(pruner.model.state_dict(), RESULT_PATH)
             break
         else:
-            print("Update optimal model", flush=True)
+            print(f"Update optimal model", flush=True)
