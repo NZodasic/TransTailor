@@ -41,12 +41,9 @@ class Pruner:
             # self.scaling_factors[name] = torch.tensor(param.data, requires_grad=True, device=param.device)
             self.scaling_factors[name] = param.clone().detach().requires_grad_(True)
 
-
         criterion = torch.nn.CrossEntropyLoss()
         num_layers = len(self.model.features)
         
-        logger.info("\n===Train the factors alpha by optimizing the loss function===")
-
         params_to_optimize = itertools.chain(self.scaling_factors[sf] for sf in self.scaling_factors.keys())
         optimizer_alpha = torch.optim.SGD(params_to_optimize, lr=learning_rate, momentum=momentum)
         
@@ -192,7 +189,6 @@ class Pruner:
         return next_new_conv
 
     def PruneAndRestructure(self, filters_to_prune):
-        logger.info("===Prune and Restructre===\n")
         for layer_to_prune in filters_to_prune:
             next_layer_index = layer_to_prune + 1
             for i, layer in enumerate(self.model.features[layer_to_prune + 1:]):
@@ -207,15 +203,12 @@ class Pruner:
 
 
     def ModifyClassifier(self):
-        logger.info("===Modify classifier===\n")
         last_conv_layer = None
         for layer in self.model.features:
             if isinstance(layer, nn.Conv2d):
                 last_conv_layer = layer
 
         if last_conv_layer is not None and last_conv_layer.out_channels == 0:
-            logger.error("Last convolutional layer has no output channels after pruning. "
-                         "Consider adjusting your pruning strategy.")
             raise ValueError("Last convolutional layer has no output channels after pruning. "
                          "Consider adjusting your pruning strategy.")
 
@@ -239,7 +232,6 @@ class Pruner:
         self.model.to(self.device)  # Ensure the entire model is on the correct device
 
     def PruneScalingFactors(self, filters_to_prune):
-        logger.info("===Prune Scaling Factors===\n")
         for layer_index in filters_to_prune:
             filter_indexes = filters_to_prune[layer_index]
             selected_filters = [f.unsqueeze(0) for i, f in enumerate(self.scaling_factors[layer_index][0]) if i not in filter_indexes]
@@ -252,7 +244,6 @@ class Pruner:
                 self.scaling_factors[layer_index] = new_scaling_factor.to(self.device)
 
     def PruneImportanceScore(self, filters_to_prune):
-        logger.info("===Prune Importance Score===\n")
         for layer_index in filters_to_prune:
             filter_indexes = filters_to_prune[layer_index]
             selected_filters = [f.unsqueeze(0) for i, f in enumerate(self.importance_scores[layer_index][0]) if i not in filter_indexes]
