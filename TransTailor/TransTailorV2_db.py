@@ -70,7 +70,7 @@ def LoadArguments():
 
     return ROOT_DIR, CHECKPOINT_PATH, NUM_WORKER, BATCH_SIZE
 
-def CalculateAccuracy(model, test_loader, device):
+def CalculateAccuracy(model, test_loader):
     model.eval()
     correct = 0
     total = 0
