@@ -157,7 +157,8 @@ if __name__ == "__main__":
         for layer in filters_to_prune:
             number_of_filters = len(filters_to_prune[layer])
             sum_filters += number_of_filters
-        print("===Number of pruned filters is: ", sum_filters, flush=True)
+        print(f"===Number of pruned filters is: ", sum_filters, flush=True)
+        logger.info(f"===Number of pruned filters is: ", sum_filters, flush=True)
 
         # pruned_count = len(pruner.pruned_filters)
         
