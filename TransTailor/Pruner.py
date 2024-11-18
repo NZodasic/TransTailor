@@ -15,11 +15,11 @@ logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
 
 class Pruner:
-    def __init__(self, model, train_loader, device):
+    def __init__(self, model, train_loader, device, amount=0.2):
         self.model = model
         self.train_loader = train_loader
         self.device = device
-        # self.amount = amount
+        self.amount = amount
         self.scaling_factors = {}
         self.importance_scores = {}
         self.pruned_filters = set()
