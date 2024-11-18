@@ -96,8 +96,8 @@ if __name__ == "__main__":
     logger.info("START MAIN PROGRAM!")
     ROOT_DIR, CHECKPOINT_PATH, NUM_WORKER, BATCH_SIZE = LoadArguments()
     
-    RESULT_PATH = os.path.join(CHECKPOINT_PATH, "optimal_model.pt")
-    SAVED_PATH = os.path.join(CHECKPOINT_PATH, "pruner", "checkpoint_{pruned_count}.pkl")
+    RESULT_PATH = os.path.join(ROOT_DIR, "optimal_model.pt")
+    SAVED_PATH = os.path.join(ROOT_DIR, "pruner", "checkpoint_{pruned_count}.pkl")
 
     # LOAD MODEL
     logger.info("GET DEVICE INFORMATION")
