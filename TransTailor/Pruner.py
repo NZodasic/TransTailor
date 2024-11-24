@@ -96,14 +96,12 @@ class Pruner:
             classification_output = self.model.classifier(outputs)
             loss = criterion(classification_output, labels)
 
-        for i, scaling_factor in self.scaling_factors.items():
-            first_order_derivative = torch.autograd.grad(loss, scaling_factor, retain_graph=True)[0]
-            self.importance_scores[i] = torch.abs(first_order_derivative * scaling_factor).detach()
 
         for i in range(num_layers):
             if isinstance(self.model.features[i], torch.nn.Conv2d):
-                first_order_derivative = torch.autograd.grad(loss, scaling_factor, retain_graph=True)[0]
-                self.importance_scores[i] = torch.abs(first_order_derivative * scaling_factor).detach()
+                for i, scaling_factor in self.scaling_factors.items():
+                    first_order_derivative = torch.autograd.grad(loss, scaling_factor, retain_graph=True)[0]
+                    self.importance_scores[i] = torch.abs(first_order_derivative * scaling_factor).detach()
             else:
                 self.importance_scores[i] = torch.ones((1, 1)).to(self.device)
 
@@ -267,11 +265,19 @@ class Pruner:
                 loss = 0
 
                 for i, layer in enumerate(self.model.features):
-                    outputs = layer(outputs)
                     if isinstance(layer, nn.Conv2d):
-                        outputs = outputs.requires_grad_(True)
-                        outputs.register_hook(lambda grad: grad * self.importance_scores[i].detach().cuda())
-
+                        # Áp dụng conv layer
+                        outputs = layer(outputs)
+                        # Register hook trước khi qua ReLU
+                        outputs = outputs.clone()
+                        outputs.requires_grad_(True)
+                        importance_score = self.importance_scores[i].detach().cuda()
+                        outputs.register_hook(lambda grad, imp=importance_score: grad * imp)
+                    elif isinstance(layer, nn.ReLU):
+                        # Tạo ReLU layer mới với inplace=False
+                        outputs = nn.ReLU(inplace=False)(outputs)
+                    else:
+                        outputs = layer(outputs)
 
                 outputs = torch.flatten(outputs, 1)
                 classification_outputs = self.model.classifier(outputs)
