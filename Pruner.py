@@ -30,7 +30,7 @@ class Pruner:
         for i, layer in enumerate(self.model.features):
             if isinstance(layer, nn.Conv2d):
                 self.scaling_factors[i] = nn.Parameter(torch.ones((1, layer.out_channels, 1, 1), requires_grad=True).to(self.device))
-                
+
 
 
     def TrainScalingFactors(self,num_epochs, learning_rate, momentum):
@@ -294,7 +294,7 @@ class Pruner:
 #                         outputs = nn.ReLU(inplace=False)(outputs)
 #                         outputs = outputs.clone().requires_grad_(True)
 #                         outputs.register_hook(lambda grad: grad * self.importance_scores[i].detach().to(grad.device))
-                        
+
 
 # # 2, 5, 7 => importance score, 1, 3, 6 => !importance score
 #                 outputs = torch.flatten(outputs, 1)
@@ -316,18 +316,18 @@ class Pruner:
             for inputs, labels in self.train_loader:
                 inputs, labels = inputs.to(self.device), labels.to(self.device)
                 optimizer.zero_grad()
-                
+
                 # Forward pass
                 outputs = inputs
                 grad_hooks = []
-                
+
                 for i, layer in enumerate(self.model.features):
                     if isinstance(layer, nn.ReLU):
                         # Use non-inplace ReLU
                         outputs = nn.functional.relu(outputs)
                     else:
                         outputs = layer(outputs)
-                    
+
                     # Add gradient hook for Conv2d layers
                     if isinstance(layer, nn.Conv2d):
                         def create_hook(i):
@@ -335,7 +335,7 @@ class Pruner:
                                 # Multiply gradient by importance score
                                 return grad * self.importance_scores[i].detach().to(grad.device)
                             return hook
-                        
+
                         # Only register hook if output requires gradient
                         if outputs.requires_grad:
                             outputs.register_hook(create_hook(i))
@@ -343,12 +343,12 @@ class Pruner:
                 # Flatten and classify
                 outputs = torch.flatten(outputs, 1)
                 classification_outputs = self.model.classifier(outputs)
-                
+
                 # Compute and backpropagate loss
                 loss = criterion(classification_outputs, labels)
                 loss.backward()
                 optimizer.step()
-                
+
                 total_loss += loss.item()
 
             print(f"Epoch [{epoch+1}/{num_epochs}], Loss: {total_loss / len(self.train_loader):.4f}")
